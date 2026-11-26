@@ -1,0 +1,50 @@
+name: Windows 11 Docker
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Limpar espaço em disco
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo apt-get clean
+
+      - name: Iniciar Windows 11 no Docker
+        run: |
+          docker run -d --name windows \
+            -e "VERSION=11" \
+            -e "RAM_SIZE=14G" \
+            -e "CPU_CORES=4" \
+            -e "DISK_SIZE=64G" \
+            -e "ARGUMENTS=-device virtio-vga-gl -display none" \
+            -p 8006:8006 \
+            -p 3389:3389 \
+            --device=/dev/kvm \
+            --device=/dev/net/tun \
+            --cap-add NET_ADMIN \
+            --stop-timeout 120 \
+            dockurr/windows
+
+      - name: Instalar e iniciar Ngrok
+        env:
+          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+        run: |
+          curl -sSL https://amazonaws.com | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install ngrok -y
+          ngrok config add-authtoken "$NGROK_AUTHTOKEN"
+          ngrok http 8006 --log=stdout > ngrok.log &
+          sleep 5
+          echo "=========================================="
+          echo "LINK DE ACESSO AO WINDOWS 11:"
+          grep -o 'url=https://[^ ]*' ngrok.log
+          echo "=========================================="
+
+      - name: Manter o container ativo
+        run: |
+          docker logs -f windows
